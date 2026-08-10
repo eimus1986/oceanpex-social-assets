@@ -1,119 +1,80 @@
 #!/usr/bin/env python3
-"""Compositor de carrusel IG 4:5 (1080x1350) — enmarca capturas REALES de la app
-con la marca Oceanpex. Reutiliza paleta/fuentes de spot-compose.py."""
-import os, textwrap
+"""Carrusel IG 1080x1080 en la plantilla de casa Oceanpex (igual que
+s2-cuatro-datos / s1-offshore-onshore ya publicados): wordmark arriba-derecha,
+kicker azul en mayúsculas espaciadas, titular blanco Montserrat, subtítulo
+gris, contador abajo-izquierda. Tipográfico, sin capturas incrustadas."""
+import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-W, H = 1080, 1350
-NAVY_DARK=(5,11,24); NAVY_MID=(10,22,46); NAVY_LIGHT=(15,41,66)
-CYAN=(56,224,232); CORAL=(255,107,122); WHITE=(255,255,255); MUTED=(148,172,196)
-F_DIR="/usr/share/fonts/truetype/montserrat"; F_INT="/usr/share/fonts/opentype/inter"
-HELP="/home/amos/oceanpex-repos/op_surf_webapp/public/help"
+S=1080
+BG_TOP=(9,15,27); BG_BOT=(12,20,36); GLOW=(20,34,58)
+ACCENT=(28,153,248); WHITE=(245,248,252); SUB=(148,163,184); COUNT=(92,108,134)
+F="/usr/share/fonts/truetype/montserrat"
 OUT="/tmp/claude-1000/-home-amos-oceanpex-repos-op-surf-ceo/08769478-5b4d-4322-a5ce-42b669a01530/scratchpad/ig_out"
-os.makedirs(OUT, exist_ok=True)
+os.makedirs(OUT,exist_ok=True)
 
 def mont(w,s):
     n={"black":"Montserrat-Black.ttf","bold":"Montserrat-Bold.ttf","semibold":"Montserrat-SemiBold.ttf","medium":"Montserrat-Medium.ttf"}[w]
-    return ImageFont.truetype(f"{F_DIR}/{n}", s)
-def inter(w,s):
-    n={"regular":"Inter-Regular.otf","medium":"Inter-Medium.otf","semibold":"Inter-SemiBold.otf"}[w]
-    return ImageFont.truetype(f"{F_INT}/{n}", s)
+    return ImageFont.truetype(f"{F}/{n}",s)
 
 def bg():
-    im=Image.new("RGB",(W,H),NAVY_DARK); d=ImageDraw.Draw(im)
-    for y in range(H):
-        t=y/H
-        c=tuple(int(NAVY_DARK[i]+(NAVY_MID[i]-NAVY_DARK[i])*t) for i in range(3))
-        d.line([(0,y),(W,y)],fill=c)
-    # glow suave arriba
-    g=Image.new("RGB",(W,H),NAVY_DARK); gd=ImageDraw.Draw(g)
-    gd.ellipse([W//2-420,-360,W//2+420,300],fill=NAVY_LIGHT)
-    g=g.filter(ImageFilter.GaussianBlur(160))
-    return Image.blend(im,g,0.35)
+    im=Image.new("RGB",(S,S),BG_TOP); d=ImageDraw.Draw(im)
+    for y in range(S):
+        t=y/S; c=tuple(int(BG_TOP[i]+(BG_BOT[i]-BG_TOP[i])*t) for i in range(3))
+        d.line([(0,y),(S,y)],fill=c)
+    g=Image.new("RGB",(S,S),(0,0,0)); ImageDraw.Draw(g).ellipse([560,360,1180,1040],fill=GLOW)
+    g=g.filter(ImageFilter.GaussianBlur(200))
+    return Image.blend(im,g,0.5)
+
+def tracked(d,text,x,y,font,fill,track,anchor_right=None):
+    text=text.upper()
+    widths=[d.textlength(ch,font=font)+track for ch in text]
+    total=sum(widths)-track
+    if anchor_right is not None: x=anchor_right-total
+    for ch,w in zip(text,widths):
+        d.text((x,y),ch,font=font,fill=fill); x+=w
+    return total
 
 def wrap(d,text,font,maxw):
-    words=text.split(); lines=[]; cur=""
-    for w in words:
-        t=(cur+" "+w).strip()
-        if d.textlength(t,font=font)<=maxw: cur=t
-        else: lines.append(cur); cur=w
-    if cur: lines.append(cur)
-    return lines
+    out=[];
+    for para in text.split("\n"):
+        words=para.split(); cur=""
+        for w in words:
+            t=(cur+" "+w).strip()
+            if d.textlength(t,font=font)<=maxw: cur=t
+            else: out.append(cur); cur=w
+        out.append(cur)
+    return out
 
-def kicker(d,text,y,color=CYAN):
-    f=mont("bold",30)
-    tx="  ".join(list(text.upper()))  # tracking
-    tx=text.upper()
-    d.text((90,y),tx,font=f,fill=color)
-    return y+52
+def fit_headline(d,text,maxw,maxlines=3):
+    for size in (124,116,108,100,92,84):
+        f=mont("black",size); ls=wrap(d,text,f,maxw)
+        if len(ls)<=maxlines: return f,ls,int(size*1.12)
+    f=mont("black",84); return f,wrap(d,text,f,maxw),94
 
-def draw_text_block(d,lines,font,x,y,fill,lh):
-    for ln in lines:
-        d.text((x,y),ln,font=font,fill=fill); y+=lh
-    return y
+def slide(idx,total,kick,headline,sub,name):
+    c=bg(); d=ImageDraw.Draw(c)
+    # wordmark
+    tracked(d,"OCEANPEX",0,60,mont("bold",34),ACCENT,7,anchor_right=990)
+    # medir bloque
+    kf=mont("bold",32)
+    hf,hls,hlh=fit_headline(d,headline,900)
+    sf=mont("medium",46); sls=wrap(d,sub,sf,900); slh=64
+    blockH=52+34+len(hls)*hlh+30+len(sls)*slh
+    y=(S-blockH)//2-10
+    tracked(d,kick,90,y,kf,ACCENT,5); y+=52+30
+    for ln in hls: d.text((90,y),ln,font=hf,fill=WHITE); y+=hlh
+    y+=30
+    for ln in sls: d.text((90,y),ln,font=sf,fill=SUB); y+=slh
+    # contador
+    d.text((90,1000),f"{idx} / {total}",font=mont("medium",32),fill=COUNT)
+    c.save(f"{OUT}/{name}",quality=95); print("→",name)
 
-def rounded(img,rad):
-    m=Image.new("L",img.size,0); ImageDraw.Draw(m).rounded_rectangle([0,0,img.size[0],img.size[1]],rad,fill=255)
-    out=Image.new("RGBA",img.size,(0,0,0,0)); out.paste(img,(0,0),m); return out
-
-def place_shot(canvas,path,box):
-    """box=(x,y,w,h); encaja la captura preservando aspecto, centrada en X, ANCLADA ARRIBA en Y
-    (para agrupar con el texto debajo). Marco redondeado + sombra. Devuelve el borde inferior."""
-    bx,by,bw,bh=box
-    im=Image.open(path).convert("RGB")
-    r=min(bw/im.width, bh/im.height)
-    nw,nh=int(im.width*r),int(im.height*r)
-    im=im.resize((nw,nh),Image.LANCZOS)
-    im=rounded(im,28)
-    px,py=bx+(bw-nw)//2, by
-    sh=Image.new("RGBA",canvas.size,(0,0,0,0)); ImageDraw.Draw(sh).rounded_rectangle([px,py+10,px+nw,py+nh+10],28,fill=(0,0,0,120))
-    sh=sh.filter(ImageFilter.GaussianBlur(24)); canvas.alpha_composite(sh)
-    canvas.alpha_composite(im.convert("RGBA"),(px,py))
-    return py+nh
-
-def base():
-    return bg().convert("RGBA")
-
-def save(canvas,name):
-    canvas.convert("RGB").save(f"{OUT}/{name}",quality=95)
-    print("→",name)
-
-def logo(d):
-    d.text((90,H-70),"oceanpex.com",font=mont("semibold",34),fill=MUTED)
-
-# ---- Slide 1: hook (texto) ----
-c=base(); d=ImageDraw.Draw(c)
-y=kicker(d,"El mar, sin intermediarios",150)
-y=170
-lines=wrap(d,"Casi todas las apps de surf te resumen el mar en una nota.",mont("bold",72),900)
-y=draw_text_block(d,lines,mont("bold",72),90,260,WHITE,88)
-d.text((90,y+40),"Nosotros no.",font=mont("black",96),fill=CYAN)
-logo(d); save(c,"01-hook.png")
-
-# ---- Slides 2-4: captura + panel ----
-def shot_slide(name,kick,kcol,shot,caption,capcolor=WHITE):
-    c=base(); d=ImageDraw.Draw(c)
-    kicker(d,kick,110,kcol)
-    bottom=place_shot(c,f"{HELP}/{shot}",(70,210,940,780))
-    d=ImageDraw.Draw(c)
-    lines=wrap(d,caption,inter("medium",42),900)
-    draw_text_block(d,lines,inter("medium",42),90,bottom+80,capcolor,60)
-    logo(d); save(c,name)
-
-shot_slide("02-verdict.png","Sin veredicto",CYAN,"help-verdict.webp",
-    "«Valora con los datos y la marea.» Te damos el rango del día y la tendencia — el veredicto lo pones tú.")
-shot_slide("03-rojo.png","Las horas en rojo",CORAL,"help-golden-window.webp",
-    "Las horas en rojo, directamente, no valen. El resto lo lees tú. Sin estrellitas.")
-shot_slide("04-swell.png","Por dónde entra el mar",CYAN,"help-swell.webp",
-    "Tamaño, periodo y dirección de cada swell. No un número suelto que decide por ti.")
-
-# ---- Slide 5: CTA ----
-c=base(); d=ImageDraw.Draw(c)
-kicker(d,"125 spots · España y Portugal",150)
-d.text((90,300),"Tu spot.",font=mont("black",110),fill=WHITE)
-d.text((90,430),"Gratis.",font=mont("black",110),fill=CYAN)
-lines=wrap(d,"Oleaje, viento y marea por franjas, en escala humana. La decisión, tuya.",inter("medium",44),900)
-draw_text_block(d,lines,inter("medium",44),90,640,MUTED,62)
-d.text((90,900),"oceanpex.com",font=mont("bold",64),fill=CYAN)
-save(c,"05-cta.png")
+N=6
+slide(1,N,"El parte, sin atajos","Casi todas las apps te resumen el mar en una nota.","Nosotros no.","01-hook.png")
+slide(2,N,"La nota","Un «7» no te dice nada.","Con las mismas estrellas, dos días pueden ser opuestos en el agua.","02-nota.png")
+slide(3,N,"Las horas en rojo","Marcamos lo que no vale.","En rojo, las horas que no acompañan. El resto lo lees tú.","03-rojo.png")
+slide(4,N,"Escala humana","El mar, en tu cuerpo.","Te llega al pecho, te tapa la cabeza. No solo «1,5 m».","04-escala.png")
+slide(5,N,"Todo junto","Oleaje, viento y marea. A la vez.","Franja por franja, con la fuente siempre a la vista.","05-junto.png")
+slide(6,N,"Gratis · 125 spots","Tu spot. Sin veredicto.","oceanpex.com","06-cta.png")
 print("OK")
