@@ -1,80 +1,103 @@
 #!/usr/bin/env python3
-"""Carrusel IG 1080x1080 en la plantilla de casa Oceanpex (igual que
-s2-cuatro-datos / s1-offshore-onshore ya publicados): wordmark arriba-derecha,
-kicker azul en mayúsculas espaciadas, titular blanco Montserrat, subtítulo
-gris, contador abajo-izquierda. Tipográfico, sin capturas incrustadas."""
+"""Carrusel IG 4:5 (1080x1350) con GRÁFICOS reales de la app enmarcados.
+Formato preferido por el fundador. Colores/tipografía alineados con los posts
+publicados: azul de marca (28,153,248), Montserrat + Inter, fondo navy."""
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-S=1080
+W,H=1080,1350
 BG_TOP=(9,15,27); BG_BOT=(12,20,36); GLOW=(20,34,58)
-ACCENT=(28,153,248); WHITE=(245,248,252); SUB=(148,163,184); COUNT=(92,108,134)
-F="/usr/share/fonts/truetype/montserrat"
+ACCENT=(28,153,248); WHITE=(245,248,252); SUB=(148,163,184)
+FM="/usr/share/fonts/truetype/montserrat"; FI="/usr/share/fonts/opentype/inter"
+HELP="/home/amos/oceanpex-repos/op_surf_webapp/public/help"
 OUT="/tmp/claude-1000/-home-amos-oceanpex-repos-op-surf-ceo/08769478-5b4d-4322-a5ce-42b669a01530/scratchpad/ig_out"
 os.makedirs(OUT,exist_ok=True)
 
 def mont(w,s):
     n={"black":"Montserrat-Black.ttf","bold":"Montserrat-Bold.ttf","semibold":"Montserrat-SemiBold.ttf","medium":"Montserrat-Medium.ttf"}[w]
-    return ImageFont.truetype(f"{F}/{n}",s)
+    return ImageFont.truetype(f"{FM}/{n}",s)
+def inter(w,s):
+    n={"regular":"Inter-Regular.otf","medium":"Inter-Medium.otf","semibold":"Inter-SemiBold.otf"}[w]
+    return ImageFont.truetype(f"{FI}/{n}",s)
 
 def bg():
-    im=Image.new("RGB",(S,S),BG_TOP); d=ImageDraw.Draw(im)
-    for y in range(S):
-        t=y/S; c=tuple(int(BG_TOP[i]+(BG_BOT[i]-BG_TOP[i])*t) for i in range(3))
-        d.line([(0,y),(S,y)],fill=c)
-    g=Image.new("RGB",(S,S),(0,0,0)); ImageDraw.Draw(g).ellipse([560,360,1180,1040],fill=GLOW)
+    im=Image.new("RGB",(W,H),BG_TOP); d=ImageDraw.Draw(im)
+    for y in range(H):
+        t=y/H; c=tuple(int(BG_TOP[i]+(BG_BOT[i]-BG_TOP[i])*t) for i in range(3))
+        d.line([(0,y),(W,y)],fill=c)
+    g=Image.new("RGB",(W,H),(0,0,0)); ImageDraw.Draw(g).ellipse([540,360,1200,1120],fill=GLOW)
     g=g.filter(ImageFilter.GaussianBlur(200))
-    return Image.blend(im,g,0.5)
+    return Image.blend(im,g,0.5).convert("RGBA")
 
-def tracked(d,text,x,y,font,fill,track,anchor_right=None):
-    text=text.upper()
-    widths=[d.textlength(ch,font=font)+track for ch in text]
-    total=sum(widths)-track
-    if anchor_right is not None: x=anchor_right-total
-    for ch,w in zip(text,widths):
-        d.text((x,y),ch,font=font,fill=fill); x+=w
-    return total
+def tracked(d,text,x,y,font,fill,track,right=None):
+    text=text.upper(); ws=[d.textlength(c,font=font)+track for c in text]; tot=sum(ws)-track
+    if right is not None: x=right-tot
+    for c,w in zip(text,ws): d.text((x,y),c,font=font,fill=fill); x+=w
+    return tot
 
 def wrap(d,text,font,maxw):
-    out=[];
+    o=[]
     for para in text.split("\n"):
-        words=para.split(); cur=""
-        for w in words:
+        cur=""
+        for w in para.split():
             t=(cur+" "+w).strip()
             if d.textlength(t,font=font)<=maxw: cur=t
-            else: out.append(cur); cur=w
-        out.append(cur)
-    return out
+            else: o.append(cur); cur=w
+        o.append(cur)
+    return o
 
-def fit_headline(d,text,maxw,maxlines=3):
-    for size in (124,116,108,100,92,84):
-        f=mont("black",size); ls=wrap(d,text,f,maxw)
-        if len(ls)<=maxlines: return f,ls,int(size*1.12)
-    f=mont("black",84); return f,wrap(d,text,f,maxw),94
+def rounded(img,rad):
+    m=Image.new("L",img.size,0); ImageDraw.Draw(m).rounded_rectangle([0,0,img.size[0],img.size[1]],rad,fill=255)
+    out=Image.new("RGBA",img.size,(0,0,0,0)); out.paste(img,(0,0),m); return out
 
-def slide(idx,total,kick,headline,sub,name):
-    c=bg(); d=ImageDraw.Draw(c)
-    # wordmark
-    tracked(d,"OCEANPEX",0,60,mont("bold",34),ACCENT,7,anchor_right=990)
-    # medir bloque
-    kf=mont("bold",32)
-    hf,hls,hlh=fit_headline(d,headline,900)
-    sf=mont("medium",46); sls=wrap(d,sub,sf,900); slh=64
-    blockH=52+34+len(hls)*hlh+30+len(sls)*slh
-    y=(S-blockH)//2-10
-    tracked(d,kick,90,y,kf,ACCENT,5); y+=52+30
-    for ln in hls: d.text((90,y),ln,font=hf,fill=WHITE); y+=hlh
-    y+=30
-    for ln in sls: d.text((90,y),ln,font=sf,fill=SUB); y+=slh
-    # contador
-    d.text((90,1000),f"{idx} / {total}",font=mont("medium",32),fill=COUNT)
-    c.save(f"{OUT}/{name}",quality=95); print("→",name)
+def load_shot(name):
+    im=Image.open(f"{HELP}/{name}").convert("RGB")
+    if "golden-window" in name:      # quitar divisor + cabecera "FRANJAS/Ver detalle"; dejar puntos+horas
+        im=im.crop((0,92,im.width,im.height))
+    return im
 
-N=6
-slide(1,N,"El parte, sin atajos","Casi todas las apps te resumen el mar en una nota.","Nosotros no.","01-hook.png")
-slide(2,N,"La nota","Un «7» no te dice nada.","Con las mismas estrellas, dos días pueden ser opuestos en el agua.","02-nota.png")
-slide(3,N,"Las horas en rojo","Marcamos lo que no vale.","En rojo, las horas que no acompañan. El resto lo lees tú.","03-rojo.png")
-slide(4,N,"Escala humana","El mar, en tu cuerpo.","Te llega al pecho, te tapa la cabeza. No solo «1,5 m».","04-escala.png")
-slide(5,N,"Todo junto","Oleaje, viento y marea. A la vez.","Franja por franja, con la fuente siempre a la vista.","05-junto.png")
-slide(6,N,"Gratis · 125 spots","Tu spot. Sin veredicto.","oceanpex.com","06-cta.png")
-print("OK")
+def place_shot(canvas,name,x,y,maxw,maxh):
+    im=load_shot(name); r=min(maxw/im.width,maxh/im.height); nw,nh=int(im.width*r),int(im.height*r)
+    im=rounded(im.resize((nw,nh),Image.LANCZOS),26)
+    px=x+(maxw-nw)//2; py=y
+    sh=Image.new("RGBA",canvas.size,(0,0,0,0)); ImageDraw.Draw(sh).rounded_rectangle([px,py+10,px+nw,py+nh+10],26,fill=(0,0,0,120))
+    canvas.alpha_composite(sh.filter(ImageFilter.GaussianBlur(24))); canvas.alpha_composite(im.convert("RGBA"),(px,py))
+    return py+nh
+
+def logo(d): d.text((90,H-72),"oceanpex.com",font=mont("semibold",34),fill=SUB)
+def kicker(d,t,y): tracked(d,t,90,y,mont("bold",30),ACCENT,4); return y+50
+def save(c,n): c.convert("RGB").save(f"{OUT}/{n}",quality=95); print("→",n)
+
+# Slide 1 — hook (tamaños de antes)
+c=bg(); d=ImageDraw.Draw(c)
+kicker(d,"El mar, sin atajos",150)
+y=250
+for ln in wrap(d,"Casi todas las apps de surf te resumen el mar en una nota.",mont("bold",72),900):
+    d.text((90,y),ln,font=mont("bold",72),fill=WHITE); y+=86
+d.text((90,y+34),"Nosotros no.",font=mont("black",92),fill=ACCENT)
+logo(d); save(c,"01-hook.png")
+
+def shot_slide(name,kick,shot,caption):
+    c=bg(); d=ImageDraw.Draw(c); kicker(d,kick,110)
+    bottom=place_shot(c,shot,70,210,940,760); d=ImageDraw.Draw(c)
+    yy=bottom+80
+    for ln in wrap(d,caption,inter("medium",42),900): d.text((90,yy),ln,font=inter("medium",42),fill=WHITE); yy+=60
+    logo(d); save(c,name)
+
+shot_slide("02-verdict.png","Sin veredicto","help-verdict.webp",
+    "«Valora con los datos y la marea.» Te damos el rango del día y la tendencia — el veredicto lo pones tú.")
+shot_slide("03-rojo.png","Las horas en rojo","help-golden-window.webp",
+    "Las horas en rojo, directamente, no valen. El resto lo lees tú. Sin estrellitas.")
+shot_slide("04-swell.png","Por dónde entra el mar","help-swell.webp",
+    "Tamaño, periodo y dirección de cada swell. No un número suelto que decide por ti.")
+
+# Slide 5 — CTA
+c=bg(); d=ImageDraw.Draw(c)
+kicker(d,"125 spots · España y Portugal",150)
+d.text((90,300),"Tu spot.",font=mont("black",104),fill=WHITE)
+d.text((90,424),"Gratis.",font=mont("black",104),fill=ACCENT)
+yy=620
+for ln in wrap(d,"Oleaje, viento y marea por franjas, en escala humana. La decisión, tuya.",inter("medium",44),900):
+    d.text((90,yy),ln,font=inter("medium",44),fill=SUB); yy+=62
+d.text((90,yy+30),"oceanpex.com",font=mont("bold",60),fill=ACCENT)
+save(c,"05-cta.png"); print("OK")
